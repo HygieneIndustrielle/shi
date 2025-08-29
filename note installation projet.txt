@@ -1,0 +1,108 @@
+✅ Windows – PowerShell (administrateur)
+
+Enregistre ceci dans un fichier install_and_run_windows.ps1 puis clic droit → Exécuter avec PowerShell (ou pwsh -ExecutionPolicy Bypass -File .\install_and_run_windows.ps1).
+
+# ====== CONFIG À ADAPTER ======
+$RepoPath   = "C:\projets\mon-projet"   # dossier où se trouve ton repo (frontend/ backend/)
+$DbUser     = "postgres"
+$DbPass     = "zak"                     # mot de passe postgres sur le PC de la société
+$DbName     = "postgres"
+$DbHost     = "localhost"
+$DbPort     = 5432
+
+# ====== 1) Node.js LTS via winget (si absent) ======
+$node = (Get-Command node -ErrorAction SilentlyContinue)
+if (-not $node) {
+  Write-Host "📦 Installation Node.js LTS via winget..."
+  winget install -e --id OpenJS.NodeJS.LTS -h
+} else {
+  Write-Host "✅ Node déjà installé: $(node -v)"
+}
+
+# ====== 2) Vérifier PostgreSQL ======
+Write-Host "🗄️  Vérification PostgreSQL..."
+$env:PGPASSWORD = $DbPass
+try {
+  & psql -h $DbHost -U $DbUser -d postgres -p $DbPort -c "\conninfo" | Out-Null
+  Write-Host "✅ Connexion PostgreSQL OK."
+} catch {
+  Write-Error "❌ Impossible de se connecter à PostgreSQL. Vérifie le service et le mot de passe."
+  exit 1
+}
+
+# ====== 3) Migration minimale: colonnes gestion (si absentes) ======
+$migrationSql = @"
+CREATE TABLE IF NOT EXISTS article (
+  id SERIAL PRIMARY KEY,
+  des1 VARCHAR(30) NOT NULL,
+  des2 VARCHAR(30) NOT NULL,
+  des3 VARCHAR(30) NOT NULL,
+  unitestock INT,
+  taxe1 INT, taxe2 INT, taxe3 INT,
+  marque_id INT,
+  type_id INT, nature_id INT, activite_id INT, famille_id INT, danger_id INT, sous_famille_id INT,
+  conditionnement INT, application INT, classification_article INT, chef_produit INT, das INT, departement INT,
+  unite_achat INT, unite_vente INT, code_comptable INT,
+  date TIMESTAMP DEFAULT now(),
+  valide BOOLEAN DEFAULT false
+);
+
+ALTER TABLE article
+  ADD COLUMN IF NOT EXISTS gestion_stock TEXT,
+  ADD COLUMN IF NOT EXISTS gestion TEXT;
+
+DO \$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'gestion_stock_chk'
+  ) THEN
+    ALTER TABLE article
+      ADD CONSTRAINT gestion_stock_chk CHECK (gestion_stock IN ('non_gere','gere','gere_titre') OR gestion_stock IS NULL);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'gestion_chk'
+  ) THEN
+    ALTER TABLE article
+      ADD CONSTRAINT gestion_chk CHECK (gestion IN ('pas_de_gestion','avec_gestion') OR gestion IS NULL);
+  END IF;
+END
+\$\$;
+"@
+
+$tempSql = Join-Path $env:TEMP "migration_gestion.sql"
+$migrationSql | Out-File -Encoding UTF8 $tempSql
+& psql -h $DbHost -U $DbUser -d $DbName -p $DbPort -f $tempSql
+Remove-Item $tempSql -Force
+
+Write-Host "✅ Migration gestion appliquée."
+
+# ====== 4) Installer dépendances & démarrer ======
+Set-Location $RepoPath
+
+# Backend
+if (Test-Path ".\backend\package.json") {
+  Write-Host "📦 Install backend deps..."
+  Set-Location ".\backend"
+  npm install
+  Write-Host "🚀 Démarrage backend..."
+  Start-Process -NoNewWindow -FilePath "node" -ArgumentList "back.js"
+  Start-Sleep -Seconds 2
+  Set-Location ".."
+} else {
+  Write-Host "⚠️  backend/package.json introuvable (chemin projet ?)"
+}
+
+# Frontend
+if (Test-Path ".\frontend\package.json") {
+  Write-Host "📦 Install frontend deps..."
+  Set-Location ".\frontend"
+  npm install
+  Write-Host "🚀 Démarrage frontend (vite)..."
+  Start-Process -NoNewWindow -FilePath "npm" -ArgumentList "run","dev"
+  Set-Location ".."
+} else {
+  Write-Host "⚠️  frontend/package.json introuvable (chemin projet ?)"
+}
+
+Write-Host "✅ Terminé. Backend: http://localhost:3000  – Frontend (vite): http://localhost:5173"
