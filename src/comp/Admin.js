@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function Admin() {
-  const baseURL = 'http://localhost:3000/api';
+  const baseURL = 'https://shi-backend-ez28.onrender.com';
 
   // Listes existantes
   const [unites, setUnites] = useState([]);
@@ -1003,3 +1003,4 @@ function Admin() {
 }
 
 export default Admin;
+
