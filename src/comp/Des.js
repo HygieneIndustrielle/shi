@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import '../App.css';
 import axios from 'axios';
 import banner from '../assets/footer_banner.gif';
-const API = 'http://localhost:3000/api';
+const API = 'https://shi-backend-ez28.onrender.com';
 
 function Des() {
   
@@ -707,3 +707,4 @@ function TableArticles({
 }
 
 export default Des;
+
